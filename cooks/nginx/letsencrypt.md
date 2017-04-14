@@ -50,10 +50,11 @@ location /.well-known {
 
 ```
 server {
-        listen 80;
+        listen 80 default_server;
+        listen [::]:80 default_server ipv6only=on;
+
         server_name example.ru;
         client_max_body_size 32m;
-        # Подключаем файл с настройками для директории .well-known 
         include acme;
         location / {
                 return 301 https://example.ru$request_uri;
@@ -61,23 +62,39 @@ server {
 }
 server {
         listen 443 ssl;
+        listen [::]:443 deferred spdy ssl ipv6only=on;
         server_name example.ru;
         client_max_body_size 32m;
-        # Полученные сертификаты будут лежать по данному пути в подпапке с названием домена
-        #ssl_certificate /etc/letsencrypt/live/example.ru/fullchain.pem;
-        #ssl_certificate_key /etc/letsencrypt/live/example.ru/privkey.pem;
-        #ssl_trusted_certificate /etc/letsencrypt/live/example.ru/chain.pem;
+        server_tokens off;
+        
+        add_header Strict-Transport-Security 'max-age=31536000';
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Content-Security-Policy "block-all-mixed-content";
+
+        ssl_certificate /etc/letsencrypt/live/example.ru/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/example.ru/privkey.pem;
+        ssl_trusted_certificate /etc/letsencrypt/live/example.ru/chain.pem;
+
+        # Для установки единого хранилища ссесий 
+        # ssl_session_cache shared:SSL:100m;
+        
+        ssl_session_timeout 60m;
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        
+        //Берем нужную строку отсюда  https://wiki.mozilla.org/Security/Server_Side_TLS#Recommended_configurations
+        ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256';
+        ssl_prefer_server_ciphers on;
 
         ssl_stapling on;
         ssl_stapling_verify on;
 
-        # исключим возврат на http-версию сайта
-        add_header Strict-Transport-Security "max-age=31536000";
+        resolver 8.8.8.8 [2001:4860:4860::8888];
 
-        # явно "сломаем" все картинки с http://
-        add_header Content-Security-Policy "block-all-mixed-content";
-        # Подключаем файл с настройками для директории .well-known 
+
         include acme;
+
         location / {
                 #Перенаправляем остальные запросы на реальный сервер
                 proxy_pass http://192.168.101.101;
@@ -130,7 +147,7 @@ $ sudo certbot renew --dry-run
 
 Команда проверяет необходимость обновления сертификата для всех доменов, и в случае необходимости обновляет их.
 
-Для того чтобы обновление происходило автоматически добавим в cron задание 
+Для того чтобы обновление происходило автоматически, добавим в cron задание 
 
 ```
 $ sudo crontab -e
